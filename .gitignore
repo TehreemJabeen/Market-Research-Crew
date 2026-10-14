@@ -1,0 +1,43 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/
+evals/results.json
+evals/results.md
+.venv/
+evals/planner_results.json
+evals/planner_results.md
+evals/sentiment_results.md
+evals/theme_review.csv
+# Secrets - never commit these
+.env
+.env.*
+!.env.example
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Local backups
+*.backup
+*.bak
+
+# Runtime data
+logs/
+*.log
+uploads/*
+!uploads/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
