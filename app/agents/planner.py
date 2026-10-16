@@ -1,59 +1,53 @@
-"""Planner v2.
+"""Planner: three LLM calls, nothing else.
 
-1. analyze   (LLM)   rewrite the question, infer who is deciding what, propose scouting searches
-2. scout     (code)  search + read real comparison pages
-3. propose   (LLM)   candidate dimensions, each rated 1-5 on relevance / differentiation / answerability,
-                     with the scouted pages that really compare on it
-4. select    (code)  score, dedupe, apply user-forced dimensions, keep the best 3-6
-5. questions (LLM)   >=1 sub-question per chosen dimension
-6. validate  (code)  coverage check, one repair call, then a template fallback
+1. rewrite     (LLM)   rewrite the question, infer who is deciding what
+2. dimensions  (LLM)   3-6 comparison dimensions that matter for that decision, most important first
+3. questions   (LLM)   1-2 sub-questions per dimension
+Code between the calls: keep the user's numbers in the rewrite, merge in forced dimensions, drop duplicates,
+trim to the limit, and make sure every dimension ends up with at least one sub-question (template fallback).
+The dimensions come from the model's own knowledge: there is no web search in the planner.
 """
 import re
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
-from app.agents.scout import run_scout
-from app.llm import BudgetExceeded, LLMError
 from app.state import Plan, Task, normalize_label
 
-ANALYZE_SYSTEM = (
+REWRITE_SYSTEM = (
     "You are the Planner agent in a market-research crew. You work out what the person is really trying to decide "
     "so the research can focus on what matters to them. You do not answer the question yourself."
 )
-CRITERIA_SYSTEM = (
-    "You are the Planner agent. You choose the comparison criteria (dimensions) that actually matter for a decision, "
-    "using evidence from real comparison pages where possible."
+DIMENSIONS_SYSTEM = (
+    "You are the Planner agent. You choose the comparison criteria (dimensions) that actually matter for a decision."
 )
 SUBQ_SYSTEM = "You are the Planner agent. You turn comparison dimensions into specific, searchable research questions."
 
+REWRITE_EXAMPLE = (
+    "Example\n"
+    "Question: notion or coda, we are 8 people and want to stay under $100/month\n"
+    '{"rewritten_question": "Which of Notion and Coda is the better workspace and documentation tool for an '
+    '8-person team with a budget under $100 per month?", "entities": ["Notion", "Coda"], '
+    '"category": "team workspace tools", "audience": "an 8-person team", '
+    '"decision": "which tool to adopt within a $100 monthly budget"}'
+)
 
-class QueryAnalysis(BaseModel):
+
+class QueryRewrite(BaseModel):
     rewritten_question: str
     entities: list[str] = Field(default_factory=list)
     category: str = ""
     audience: str = ""
     decision: str = ""
-    scout_queries: list[str] = Field(default_factory=list)
 
 
-class Candidate(BaseModel):
+class DimensionChoice(BaseModel):
     name: str
-    why_it_matters: str = ""
-    relevance: float = 3
-    differentiation: float = 3
-    answerable: float = 3
-    source_urls: list[str] = Field(default_factory=list)
-
-    @field_validator("relevance", "differentiation", "answerable", mode="before")
-    @classmethod
-    def _tolerant_rating(cls, value):
-        # A messy rating ('4/5', 'high', 99) must not cost a whole retry: coerce and clamp to 1-5 here.
-        return clamp(value)
+    why: str = ""
 
 
-class Candidates(BaseModel):
-    candidates: list[Candidate] = Field(default_factory=list)
+class DimensionList(BaseModel):
+    dimensions: list[DimensionChoice] = Field(default_factory=list)
 
 
 class SubQuestion(BaseModel):
@@ -69,12 +63,12 @@ class SubQuestions(BaseModel):
 class ChosenDimension:
     name: str
     why: str
-    score: float
-    n_sources: int
     forced: bool = False
 
 
 # ---- pure helpers (unit-tested without any LLM) -----------------------------------------------
+
+NUMBER_RE = re.compile(r"[$€£]?\d[\d,.]*[kKmM%]?")
 
 
 def _key(text: str) -> str:
@@ -91,59 +85,33 @@ def overlaps(a: str, b: str) -> bool:
     return bool(ta) and bool(tb) and (ta <= tb or tb <= ta)
 
 
-def clamp(value, lo: float = 1.0, hi: float = 5.0) -> float:
-    """Turn whatever the model wrote into a number in [lo, hi]; unparseable text becomes the neutral 3."""
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        found = re.search(r"-?\d+(?:\.\d+)?", str(value))  # '4/5' -> 4
-        number = float(found.group()) if found else 3.0
-    return max(lo, min(hi, number))
+def preserve_constraints(original: str, rewritten: str) -> tuple[str, list[str]]:
+    """Every number, price or percentage in the user's question must survive the rewrite. Any that was lost is
+    appended as an explicit constraint. Returns (question to use, the numbers that had been lost)."""
+    wanted = [m.group().rstrip(".,") for m in NUMBER_RE.finditer(original)]
+    lost = [n for n in dict.fromkeys(wanted) if n and not re.search(r"(?<!\d)" + re.escape(n) + r"(?!\d)", rewritten, re.I)]
+    if not lost:
+        return rewritten, []
+    return f"{rewritten.rstrip()} (Constraints from the user: {', '.join(lost)})", lost
 
 
-def score_candidate(c: Candidate, n_sources: int) -> float:
-    """0.4*relevance + 0.3*differentiation + 0.3*answerability (each 1-5), plus an evidence bonus of 0.25 per
-    scouted page that compares on it (max +1.0). The model rates; code does the arithmetic and the choosing."""
-    base = 0.4 * clamp(c.relevance) + 0.3 * clamp(c.differentiation) + 0.3 * clamp(c.answerable)
-    return round(base + 0.25 * min(n_sources, 4), 2)
-
-
-def select_dimensions(candidates: list[Candidate], scouted_urls: set[str], forced: list[str], settings) -> list[ChosenDimension]:
-    scored: list[ChosenDimension] = []
-    for c in candidates:
-        name = c.name.strip()
-        if not name:
-            continue
-        # Only pages we really fetched count as evidence: a made-up URL earns nothing.
-        n_sources = len({u for u in c.source_urls if u in scouted_urls})
-        scored.append(ChosenDimension(name, c.why_it_matters.strip(), score_candidate(c, n_sources), n_sources))
-    scored.sort(key=lambda d: d.score, reverse=True)
-
+def tidy_dimensions(items: list[DimensionChoice], forced: list[str], settings) -> list[ChosenDimension]:
+    """The user's own dimensions come first, then the model's in the order it gave them (most important first).
+    Overlapping names are dropped and the list is trimmed to `max_dimensions`."""
     chosen: list[ChosenDimension] = []
 
     def add(d: ChosenDimension) -> None:
-        if not any(overlaps(d.name, x.name) for x in chosen):
+        if d.name and not any(overlaps(d.name, x.name) for x in chosen):
             chosen.append(d)
 
-    for name in forced:  # the user's own dimensions always come first
-        match = next((d for d in scored if overlaps(d.name, name)), None)
-        add(ChosenDimension(
-            name,
-            match.why if match else "requested by the user",
-            match.score if match else 0.0,
-            match.n_sources if match else 0,
-            forced=True,
-        ))
+    for name in forced:
+        match = next((c for c in items if overlaps(c.name, name)), None)
+        add(ChosenDimension(name, match.why.strip() if match else "requested by the user", forced=True))
     limit = max(settings.max_dimensions, len(chosen))
-    for d in scored:
+    for c in items:
         if len(chosen) >= limit:
             break
-        if d.score >= settings.min_dimension_score:
-            add(d)
-    for d in scored:  # too few passed the bar: top up with the best of the rest
-        if len(chosen) >= min(settings.min_dimensions, limit):
-            break
-        add(d)
+        add(ChosenDimension(c.name.strip(), c.why.strip()))
     return chosen
 
 
@@ -188,95 +156,64 @@ def run_planner(state, deps) -> dict:
     forced = [d.strip() for d in (state.get("user_dimensions") or []) if d and d.strip()]
     trace: list[str] = []
 
-    # 1. analyze
+    # Call 1: rewrite the question
     qa = deps.llm.structured(
-        ANALYZE_SYSTEM,
-        f"Research question: {question}\n\nProduce:\n"
-        "- rewritten_question: one clear, self-contained question that keeps the audience and constraints\n"
-        "- entities: the companies/products/segments to compare (1-6 short names; if the question asks for "
-        "'alternatives' or 'the best', name the most relevant real ones)\n"
+        REWRITE_SYSTEM,
+        f"Research question: {question}\n\nRewrite and analyze it. Return:\n"
+        "- rewritten_question: one clear, self-contained question. Keep EVERY number, budget, region, team size and "
+        "deadline from the original, word for word.\n"
+        "- entities: the companies/products/segments to compare (1-6 short names). Use the ones named in the "
+        "question; if it asks for 'alternatives' or 'the best', name the most relevant real ones.\n"
         "- category: what kind of thing is being compared\n"
-        "- audience: who is making the decision\n"
-        "- decision: what they are trying to decide or achieve\n"
-        "- scout_queries: 2-3 web search queries that would find comparison articles, buyer's guides or "
-        "reviews for this decision (queries for guides, not for the answers)",
-        QueryAnalysis,
+        "- audience: who is making the decision. If the question does not state or clearly imply it, leave this "
+        "empty instead of guessing.\n"
+        "- decision: what they are trying to decide or achieve (empty if unclear)\n\n" + REWRITE_EXAMPLE,
+        QueryRewrite,
     )
-    rewritten = qa.rewritten_question.strip() or question
+    rewritten, lost = preserve_constraints(question, qa.rewritten_question.strip() or question)
+    if lost:
+        trace.append(f"planner: the rewrite had dropped {lost}; added them back as constraints")
     entities = [e.strip() for e in qa.entities if e.strip()][:6]
     audience = qa.audience.strip()
+    decision = qa.decision.strip()
 
-    # 2. scout
-    sources: dict[str, str] = {}
-    if s.enable_scout:
-        sources = run_scout([q for q in qa.scout_queries if q.strip()] or [rewritten], deps, trace)
-    else:
-        trace.append("scout: disabled (model knowledge only)")
-
-    # 3. propose candidate dimensions
-    source_block = (
-        "\n\n".join(f"=== SOURCE url={u} ===\n{t}" for u, t in sources.items())
-        if sources
-        else "(no web sources available: propose from your own knowledge and leave source_urls empty)"
+    # Call 2: dimensions
+    forced_note = f"\nThe user REQUIRES these dimensions, include them: {forced}\n" if forced else ""
+    dims_out = deps.llm.structured(
+        DIMENSIONS_SYSTEM,
+        f"Question: {rewritten}\nAudience: {audience or '(not stated)'}\nDecision: {decision or '(not stated)'}\n"
+        f"Category: {qa.category}\nEntities: {entities}\n{forced_note}\n"
+        f"List {s.min_dimensions}-{s.max_dimensions} comparison dimensions, most important first. A good dimension:\n"
+        "- would change the decision for THIS audience\n"
+        "- is one where the entities actually differ\n"
+        "- can be answered from public web pages (not private data)\n"
+        "- has a short name (1-3 words) that applies to every entity\n"
+        "Include criteria this audience would care about even if the question never mentioned them. "
+        "No filler like 'overview' or 'general'.\n"
+        "For each give `name` and `why` (one sentence about this audience's decision).",
+        DimensionList,
     )
-    forced_note = f"\nThe user REQUIRES these dimensions; include and rate them: {forced}\n" if forced else ""
-    candidates = deps.llm.structured(
-        CRITERIA_SYSTEM,
-        f"Question: {rewritten}\nAudience: {audience}\nDecision: {qa.decision}\nCategory: {qa.category}\n"
-        f"Entities: {entities}\n{forced_note}\n"
-        "List 6-10 candidate comparison criteria. For each give:\n"
-        "- name: 1-3 words, generic enough to apply to every entity\n"
-        "- why_it_matters: one sentence about THIS audience's decision\n"
-        "- relevance 1-5: how much it matters to this decision\n"
-        "- differentiation 1-5: do the entities actually differ on it? (5 = big differences)\n"
-        "- answerable 1-5: can it be answered from public web pages? (1 = needs private data)\n"
-        "- source_urls: only urls from the SOURCES below whose page really compares on this criterion; "
-        "empty if you added it from your own knowledge\n"
-        "Include criteria the sources emphasise even if the question never mentioned them. "
-        "No filler like 'overview' or 'general'.\n\n" + source_block,
-        Candidates,
-    )
-
-    # 4. select (code)
-    chosen = select_dimensions(candidates.candidates, set(sources), forced, s)
+    chosen = tidy_dimensions(dims_out.dimensions, forced, s)
     if not chosen:
         trace.append("planner: no usable dimensions proposed; falling back to generic ones")
-        chosen = [ChosenDimension(n, "generic fallback", 0.0, 0) for n in ("pricing", "features", "user experience")]
+        chosen = [ChosenDimension(n, "generic fallback") for n in ("pricing", "features", "user experience")]
     dims = [d.name for d in chosen]
-    trace.append(
-        "planner: dimensions = "
-        + ", ".join(f"{d.name} ({'user' if d.forced else f'{d.score:.2f}'}, {d.n_sources} src)" for d in chosen)
-    )
+    trace.append("planner: dimensions = " + ", ".join(f"{d.name}{' (user)' if d.forced else ''}" for d in chosen))
     if len(chosen) < s.min_dimensions:
         trace.append(f"planner: only {len(chosen)} dimensions available (wanted {s.min_dimensions})")
 
-    # 5. sub-questions, 6. validate coverage
+    # Call 3: sub-questions, then a code check that every dimension is covered
     dim_lines = "\n".join(f"- {d.name}: {d.why}" for d in chosen)
     items = deps.llm.structured(
         SUBQ_SYSTEM,
-        f"Question: {rewritten}\nAudience: {audience}\nEntities: {entities}\n\nDimensions:\n{dim_lines}\n\n"
+        f"Question: {rewritten}\nAudience: {audience or '(not stated)'}\nEntities: {entities}\n\n"
+        f"Dimensions:\n{dim_lines}\n\n"
         "For EVERY dimension write 1-2 sub-questions answerable by web search. Each must be about exactly one "
         "dimension, name the entities it covers, and be specific. Return items with `dimension` (exactly as listed) "
         "and `question`.",
         SubQuestions,
     ).items
     kept, missing = organize_sub_questions(items, dims, s)
-    if missing:
-        trace.append(f"planner: no sub-question for {missing}; asking once more")
-        try:
-            extra = deps.llm.structured(
-                SUBQ_SYSTEM,
-                f"Question: {rewritten}\nEntities: {entities}\n"
-                f"These dimensions still have no sub-question: {missing}. Write 1 specific, searchable "
-                "sub-question for each. Return items with `dimension` (exactly as listed) and `question`.",
-                SubQuestions,
-            ).items
-        except BudgetExceeded:
-            raise
-        except LLMError as exc:
-            extra = []
-            trace.append(f"planner: repair call failed ({exc})")
-        kept, missing = organize_sub_questions([*kept, *extra], dims, s)
     for dim in missing:
         trace.append(f"planner: used a template sub-question for '{dim}'")
         kept.append(SubQuestion(dimension=dim, question=fallback_question(dim, entities, audience)))
@@ -286,12 +223,10 @@ def run_planner(state, deps) -> dict:
     plan = Plan(
         rewritten_question=rewritten,
         audience=audience,
-        decision=qa.decision.strip(),
+        decision=decision,
         entities=entities,
         dimensions=dims,
         dimension_notes={d.name: d.why for d in chosen},
-        dimension_scores={d.name: d.score for d in chosen},
-        dimension_evidence={d.name: d.n_sources for d in chosen},
         sub_questions=[t.sub_question for t in tasks],
         outline=["Summary", *dims, "Limitations"],
     )

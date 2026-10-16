@@ -5,7 +5,7 @@ from app.agents.analyst import AnalysisOut, ClaimThemeLink, LinkSet
 from app.agents.community import ExtractedSnippet, ExtractedSnippets
 from app.agents.factchecker import Verdict, Verdicts
 from app.agents.opinions import ThemeGroup, ThemeGroups
-from app.agents.planner import Candidate, Candidates, QueryAnalysis, SubQuestion, SubQuestions
+from app.agents.planner import DimensionChoice, DimensionList, QueryRewrite, SubQuestion, SubQuestions
 from app.agents.researcher import ExtractedClaim, ExtractedClaims, QueryList
 from app.config import Settings
 from app.deps import Deps
@@ -117,21 +117,18 @@ class FakeLLM(BaseLLM):
 
     def structured(self, system, prompt, schema, retries=2):
         self._reserve()
-        if schema is QueryAnalysis:
-            return QueryAnalysis(
+        if schema is QueryRewrite:
+            return QueryRewrite(
                 rewritten_question="Compare Alpha and Beta for small teams",
                 entities=["Alpha", "Beta"],
                 category="work tools",
                 audience="small teams",
                 decision="which tool to adopt",
-                scout_queries=["alpha vs beta comparison"],
             )
-        if schema is Candidates:
-            return Candidates(candidates=[
-                Candidate(name="pricing", why_it_matters="Budget is tight for small teams.",
-                          relevance=5, differentiation=4, answerable=5, source_urls=[URL_A, URL_B]),
-                Candidate(name="features", why_it_matters="Teams need the core workflow covered.",
-                          relevance=4, differentiation=4, answerable=4, source_urls=[URL_A]),
+        if schema is DimensionList:
+            return DimensionList(dimensions=[
+                DimensionChoice(name="pricing", why="Budget is tight for small teams."),
+                DimensionChoice(name="features", why="Teams need the core workflow covered."),
             ])
         if schema is SubQuestions:
             return SubQuestions(items=[

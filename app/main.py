@@ -16,7 +16,6 @@ def main() -> int:
     parser.add_argument("--provider", choices=["gemini", "grok"], help="override LLM_PROVIDER")
     parser.add_argument("--dimensions", help="comma-separated dimensions you insist on, e.g. 'pricing,security'")
     parser.add_argument("--no-factcheck", action="store_true", help="disable the fact-checker (ablation)")
-    parser.add_argument("--no-scout", action="store_true", help="plan from model knowledge only (no scouting searches)")
     parser.add_argument("--no-community", action="store_true", help="facts only: skip the Hacker News / Reddit opinions track")
     parser.add_argument("--sentiment-backend", choices=["hf", "llm"], help="override SENTIMENT_BACKEND")
     parser.add_argument("--out", default="outputs", help="folder for the report")
@@ -25,7 +24,6 @@ def main() -> int:
     settings = get_settings(
         provider=args.provider,
         enable_factchecker=False if args.no_factcheck else None,
-        enable_scout=False if args.no_scout else None,
         enable_community=False if args.no_community else None,
         sentiment_backend=args.sentiment_backend,
     )

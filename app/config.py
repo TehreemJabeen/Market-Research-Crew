@@ -1,4 +1,3 @@
-#app/config.py: Holds all settings and limits, such as the maximum number of dimensions and the LLM call budget. It reads overrides from .env.
 import os
 from dataclasses import dataclass
 
@@ -21,11 +20,10 @@ class Settings:
 
     # Planner
     max_dimensions: int = 6
-    min_dimensions: int = 3  # topped up from lower-scored candidates if fewer pass the threshold
-    min_dimension_score: float = 3.0  # candidate score needed to be chosen (see planner.score_candidate)
+    min_dimensions: int = 3  # asked of the model; fewer is accepted with a note in the trace
     max_subquestions: int = 8  # total cap; every dimension still keeps at least one
     subq_per_dim_max: int = 2
-    enable_scout: bool = True  # search for comparison pages first; off = model's own knowledge only
+    # Used by agents/scout.py, which the planner does not call at the moment.
     max_scout_queries: int = 3
     max_scout_sources: int = 5
     scout_chars: int = 3000

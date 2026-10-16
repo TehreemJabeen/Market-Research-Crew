@@ -1,9 +1,8 @@
 """Planner quality: of the dimensions an expert would use, how many does the planner find, and how many of
 its own are on the expert list?   python -m evals.planner_eval --limit 3
 
-Two modes show what scouting adds:
-  scouted   planner with scouting searches (evidence-based)
-  llm_only  planner from the model's own knowledge
+The planner makes three LLM calls and no searches. To compare two planner versions (or two models), run this
+once for each and keep the result files.
 
 Matching is done in code (word overlap plus a small synonym map), so it is cheap and reproducible but
 imperfect: read the printed pairs before trusting a number.
@@ -13,7 +12,6 @@ import json
 import re
 import statistics
 import time
-from dataclasses import replace
 from pathlib import Path
 
 from app.agents.planner import run_planner
@@ -21,7 +19,6 @@ from app.config import get_settings
 from app.deps import build_deps
 
 HERE = Path(__file__).parent
-MODES = {"scouted": True, "llm_only": False}
 STOPWORDS = {"of", "and", "the", "for", "to", "a", "in", "on", "&", "vs"}
 SYNONYMS = {
     "price": "pricing", "prices": "pricing", "cost": "pricing", "costs": "pricing", "plan": "pricing", "plans": "pricing",
@@ -55,33 +52,32 @@ def dimension_scores(predicted: list[str], expert: list[str]) -> dict:
     }
 
 
-def run_one(item: dict, expert: list[str], mode: str, base_settings) -> dict:
-    deps = build_deps(replace(base_settings, enable_scout=MODES[mode]))
+def run_one(item: dict, expert: list[str], settings) -> dict:
+    deps = build_deps(settings)
     start = time.time()
     try:
         out = run_planner({"question": item["question"]}, deps)
     except Exception as exc:
-        return {"id": item["id"], "mode": mode, "error": str(exc)}
+        return {"id": item["id"], "error": str(exc)}
     predicted = out["plan"].dimensions
     return {
-        "id": item["id"], "mode": mode, "dimensions": predicted, "n_dims": len(predicted),
+        "id": item["id"], "dimensions": predicted, "n_dims": len(predicted),
         **dimension_scores(predicted, expert),
         "llm_calls": deps.llm.usage()["llm_calls"], "seconds": round(time.time() - start, 1),
     }
 
 
 def summarize(rows: list[dict]) -> str:
-    lines = ["| mode | runs | dimension recall | dimension precision | avg dimensions | avg LLM calls | avg seconds |",
-             "|---|---|---|---|---|---|---|"]
-    for mode in MODES:
-        ok = [r for r in rows if r["mode"] == mode and "error" not in r]
-        failed = sum(1 for r in rows if r["mode"] == mode and "error" in r)
-        if not ok:
-            lines.append(f"| {mode} | 0 ok / {failed} failed | - | - | - | - | - |")
-            continue
-        avg = lambda k: round(statistics.mean(r[k] for r in ok), 2)
-        lines.append(f"| {mode} | {len(ok)}" + (f" ({failed} failed)" if failed else "")
-                     + f" | {avg('recall')} | {avg('precision')} | {avg('n_dims')} | {avg('llm_calls')} | {avg('seconds')} |")
+    lines = ["| runs | dimension recall | dimension precision | avg dimensions | avg LLM calls | avg seconds |",
+             "|---|---|---|---|---|---|"]
+    ok = [r for r in rows if "error" not in r]
+    failed = sum(1 for r in rows if "error" in r)
+    if not ok:
+        lines.append(f"| 0 ok / {failed} failed | - | - | - | - | - |")
+        return "\n".join(lines)
+    avg = lambda k: round(statistics.mean(r[k] for r in ok), 2)
+    lines.append(f"| {len(ok)}" + (f" ({failed} failed)" if failed else "")
+                 + f" | {avg('recall')} | {avg('precision')} | {avg('n_dims')} | {avg('llm_calls')} | {avg('seconds')} |")
     return "\n".join(lines)
 
 
@@ -98,10 +94,9 @@ def main() -> None:
         if item["id"] not in expert:
             print(f"skipping {item['id']}: no expert dimensions")
             continue
-        for mode in MODES:
-            print(f"planning {item['id']} / {mode} ...", flush=True)
-            rows.append(run_one(item, expert[item["id"]], mode, settings))
-            print("  ->", rows[-1], flush=True)
+        print(f"planning {item['id']} ...", flush=True)
+        rows.append(run_one(item, expert[item["id"]], settings))
+        print("  ->", rows[-1], flush=True)
     (HERE / "planner_results.json").write_text(json.dumps(rows, indent=2))
     table = summarize(rows)
     (HERE / "planner_results.md").write_text(table + "\n")

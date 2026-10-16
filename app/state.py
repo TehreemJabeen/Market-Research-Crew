@@ -1,5 +1,3 @@
-# Defines the shared data shapes: Plan, Task, Claim, Theme and so on. Every agent reads and writes these objects.
-
 from enum import Enum
 from typing import Literal
 
@@ -20,8 +18,6 @@ class Plan(BaseModel):
     entities: list[str] = Field(default_factory=list)
     dimensions: list[str] = Field(default_factory=list)
     dimension_notes: dict[str, str] = Field(default_factory=dict)  # why each dimension matters
-    dimension_scores: dict[str, float] = Field(default_factory=dict)  # computed in code from LLM ratings
-    dimension_evidence: dict[str, int] = Field(default_factory=dict)  # scouted pages that compare on it
     sub_questions: list[str] = Field(default_factory=list)
     outline: list[str] = Field(default_factory=list)
 
