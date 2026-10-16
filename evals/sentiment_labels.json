@@ -1,0 +1,32 @@
+{
+  "_note": "SYNTHETIC starter examples written as a guide to the format. Replace them with real snippets from your own runs, hand-labelled toward the named entity on the named dimension, before quoting any number.",
+  "items": [
+    {"id": 1, "entity": "Notion", "dimension": "pricing", "text": "Notion's free plan is more than enough for our team of four.", "label": "positive"},
+    {"id": 2, "entity": "Notion", "dimension": "pricing", "text": "Notion got expensive fast once we needed guests and more admins.", "label": "negative"},
+    {"id": 3, "entity": "Coda", "dimension": "features", "text": "Coda's formulas and automations are the best thing about it.", "label": "positive"},
+    {"id": 4, "entity": "Coda", "dimension": "features", "text": "I find Coda confusing, every doc ends up as a mess of tables.", "label": "negative"},
+    {"id": 5, "entity": "ClickUp", "dimension": "ease of use", "text": "ClickUp has so many options that onboarding new people takes forever.", "label": "negative"},
+    {"id": 6, "entity": "ClickUp", "dimension": "features", "text": "ClickUp has a lot of features and views, we use time tracking daily.", "label": "positive"},
+    {"id": 7, "entity": "Notion", "dimension": "performance", "text": "Notion gets really slow once a database passes a few thousand rows.", "label": "negative"},
+    {"id": 8, "entity": "Notion", "dimension": "integrations", "text": "The Slack and GitHub integrations in Notion work fine for us.", "label": "positive"},
+    {"id": 9, "entity": "Coda", "dimension": "pricing", "text": "Coda charges per maker, which is how the pricing works.", "label": "neutral"},
+    {"id": 10, "entity": "ClickUp", "dimension": "support", "text": "I contacted ClickUp support once and got an answer the same day.", "label": "positive"},
+    {"id": 11, "entity": "ClickUp", "dimension": "support", "text": "Support took two weeks to reply and the answer did not help.", "label": "negative"},
+    {"id": 12, "entity": "Notion", "dimension": "features", "text": "Notion has databases, docs and a wiki.", "label": "neutral"},
+    {"id": 13, "entity": "Coda", "dimension": "ease of use", "text": "Coda was easy for our designers to pick up in an afternoon.", "label": "positive"},
+    {"id": 14, "entity": "Notion", "dimension": "ease of use", "text": "Notion is so much simpler than ClickUp, nobody needed training.", "label": "positive"},
+    {"id": 15, "entity": "ClickUp", "dimension": "ease of use", "text": "Notion is so much simpler than ClickUp, nobody needed training.", "label": "negative"},
+    {"id": 16, "entity": "Notion", "dimension": "pricing", "text": "We moved from Notion to Coda because the pricing was getting out of hand.", "label": "negative"},
+    {"id": 17, "entity": "Coda", "dimension": "pricing", "text": "We moved from Notion to Coda because the pricing was getting out of hand.", "label": "positive"},
+    {"id": 18, "entity": "Notion", "dimension": "mobile app", "text": "The Notion mobile app crashes whenever I open a large page.", "label": "negative"},
+    {"id": 19, "entity": "ClickUp", "dimension": "performance", "text": "ClickUp loads quickly and I have never had it go down.", "label": "positive"},
+    {"id": 20, "entity": "Coda", "dimension": "integrations", "text": "Coda has a Zapier integration and a Slack pack.", "label": "neutral"},
+    {"id": 21, "entity": "ClickUp", "dimension": "pricing", "text": "ClickUp's free plan has limits on storage and automations.", "label": "neutral"},
+    {"id": 22, "entity": "Notion", "dimension": "features", "text": "Notion templates are fine, nothing special.", "label": "neutral"},
+    {"id": 23, "entity": "Coda", "dimension": "performance", "text": "Big Coda docs take forever to load and sometimes freeze the browser.", "label": "negative"},
+    {"id": 24, "entity": "ClickUp", "dimension": "ease of use", "text": "Honestly ClickUp is fine once you hide the features you do not need.", "label": "positive"},
+    {"id": 25, "entity": "Notion", "dimension": "pricing", "text": "Notion has a free plan and paid plans per member.", "label": "neutral"},
+    {"id": 26, "entity": "ClickUp", "dimension": "features", "text": "ClickUp supports lists, boards and calendars.", "label": "neutral"},
+    {"id": 27, "entity": "Coda", "dimension": "pricing", "text": "Coda has Free, Pro and Team tiers.", "label": "neutral"}
+  ]
+}

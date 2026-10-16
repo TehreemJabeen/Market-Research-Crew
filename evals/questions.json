@@ -1,0 +1,17 @@
+[
+  {
+    "id": "pm-tools",
+    "question": "Compare Notion, Coda and ClickUp for small teams: pricing, features and weaknesses.",
+    "must_mention": ["Notion", "Coda", "ClickUp", "pricing", "free"]
+  },
+  {
+    "id": "vector-dbs",
+    "question": "Compare Pinecone, Weaviate and Qdrant as vector databases for a startup.",
+    "must_mention": ["Pinecone", "Weaviate", "Qdrant", "open-source", "pricing"]
+  },
+  {
+    "id": "crm",
+    "question": "Compare HubSpot, Pipedrive and Zoho CRM for small sales teams.",
+    "must_mention": ["HubSpot", "Pipedrive", "Zoho", "pricing", "free"]
+  }
+]

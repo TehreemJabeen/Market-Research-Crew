@@ -1,0 +1,6 @@
+{
+  "_note": "STARTER labels written as a rough guide. Replace them with dimensions taken from human-written comparison reports (or your own judgement) before quoting any numbers.",
+  "pm-tools": ["pricing", "ease of use", "collaboration", "integrations", "customization", "mobile and offline", "scalability"],
+  "vector-dbs": ["performance and latency", "scalability", "pricing", "hosting options", "filtering and hybrid search", "open source", "integrations", "operational complexity"],
+  "crm": ["pricing", "ease of use", "automation", "integrations", "reporting", "customization", "support", "free plan limits"]
+}
