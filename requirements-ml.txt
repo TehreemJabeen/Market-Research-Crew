@@ -1,0 +1,4 @@
+# Optional: local sentiment model (SENTIMENT_BACKEND=hf). Without these the app falls back to the LLM scorer.
+# For a smaller CPU-only torch build see https://pytorch.org/get-started/locally/
+transformers>=4.40
+torch>=2.2
