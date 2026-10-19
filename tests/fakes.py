@@ -3,22 +3,24 @@ import re
 
 from app.agents.analyst import AnalysisOut, ClaimThemeLink, LinkSet
 from app.agents.community import ExtractedSnippet, ExtractedSnippets
-from app.agents.factchecker import Verdict, Verdicts
 from app.agents.opinions import ThemeGroup, ThemeGroups
 from app.agents.planner import DimensionChoice, DimensionList, QueryRewrite, SubQuestion, SubQuestions
-from app.agents.researcher import ExtractedClaim, ExtractedClaims, QueryList
+from app.agents.researcher import ExtractedClaim, ExtractedClaims
 from app.config import Settings
 from app.deps import Deps
 from app.llm import BaseLLM
 from app.tools.community import CommunityPost
+from app.tools.domains import on_domain
 from app.tools.search import SearchResult
 from app.tools.sentiment import Polarity, ScoreOut, ScoresOut
 
-URL_A = "https://a.example/alpha"
-URL_B = "https://b.example/beta"
+URL_A = "https://alpha.example/product"
+URL_B = "https://beta.example/product"
+URL_BLOG = "https://reviews.example/alpha-vs-beta"  # a third-party page: the researchers must never read it
 PAGES = {
     URL_A: "Alpha costs ten dollars per user per month for teams. Alpha offers a free plan for individuals.",
     URL_B: "Beta includes kanban boards and timeline views for planning. Beta pricing starts at twelve dollars per seat monthly.",
+    URL_BLOG: "A reviewer says Alpha is overpriced and Beta is the winner for every team.",
 }
 FABRICATED_A = "Alpha has built-in AI that writes all your documents automatically."
 FABRICATED_B = "Beta guarantees ninety nine percent uptime backed by a signed contract."
@@ -135,12 +137,8 @@ class FakeLLM(BaseLLM):
                 SubQuestion(dimension="pricing", question="pricing of Alpha and Beta"),
                 SubQuestion(dimension="features", question="features of Alpha and Beta"),
             ])
-        if schema is QueryList:
-            return QueryList(queries=["alpha beta features official"])
         if schema is ExtractedClaims:
             return self._extract(prompt)
-        if schema is Verdicts:
-            return Verdicts(verdicts=[Verdict(claim_id=i, verdict="supported") for i in re.findall(r"id=(\S+)", prompt)])
         if schema is ExtractedSnippets:
             dim = re.search(r"DIMENSION: (.*)", prompt).group(1).strip()
             return ExtractedSnippets(snippets=[ExtractedSnippet(post_id=p, entity=e, quote=q) for p, e, q in SNIPPETS.get(dim, [])])
@@ -176,7 +174,6 @@ class FakeLLM(BaseLLM):
 
     def _extract(self, prompt):
         subq = re.search(r"SUB-QUESTION: (.*)", prompt).group(1)
-        attempt = int(re.search(r"ATTEMPT: (\d+)", prompt).group(1))
         if "pricing" in subq:
             return ExtractedClaims(claims=[
                 ExtractedClaim(entity="Alpha", dimension="pricing", text="Alpha costs $10 per user per month for teams.",
@@ -186,12 +183,9 @@ class FakeLLM(BaseLLM):
                 ExtractedClaim(entity="Alpha", dimension="features", text="Alpha writes documents with built-in AI.",
                                source_url=URL_A, supporting_quote=FABRICATED_A),  # hallucinated quote
             ])
-        if attempt == 1:  # first try for the features task: only a hallucinated claim
-            return ExtractedClaims(claims=[
-                ExtractedClaim(entity="Beta", dimension="features", text="Beta guarantees 99% uptime.",
-                               source_url=URL_B, supporting_quote=FABRICATED_B),
-            ])
-        return ExtractedClaims(claims=[  # retry succeeds
+        return ExtractedClaims(claims=[
+            ExtractedClaim(entity="Beta", dimension="features", text="Beta guarantees 99% uptime.",
+                           source_url=URL_B, supporting_quote=FABRICATED_B),  # hallucinated quote
             ExtractedClaim(entity="Beta", dimension="features", text="Beta includes kanban boards and timeline views.",
                            source_url=URL_B, supporting_quote="Beta includes kanban boards and timeline views for planning."),
             ExtractedClaim(entity="Alpha", dimension="features", text="Alpha offers a free plan for individuals.",
@@ -222,8 +216,19 @@ class FakeLLM(BaseLLM):
         raise AssertionError("unexpected complete() call")
 
 
-def fake_search(query, n):
-    return [SearchResult(title="A", url=URL_A, snippet=PAGES[URL_A]), SearchResult(title="B", url=URL_B, snippet=PAGES[URL_B])]
+def fake_search(query, n, domains=None):
+    """Stands in for Tavily. '<entity> official website' returns the product's own site (plus a review site);
+    anything else returns pages from every site unless `domains` limits it, like Tavily's include_domains."""
+    if query.endswith("official website"):
+        name = query.split()[0].lower()
+        return [
+            SearchResult(title="Reviews", url=f"https://www.g2.com/products/{name}", snippet="reviews"),
+            SearchResult(title=name.title(), url=f"https://www.{name}.example/", snippet=f"{name} home"),
+        ]
+    pool = [URL_BLOG, URL_A, URL_B]
+    if domains:
+        pool = [u for u in pool if on_domain(u, domains)]
+    return [SearchResult(title=u, url=u, snippet=PAGES[u]) for u in pool[:n]]
 
 
 def fake_fetch(url):

@@ -1,9 +1,8 @@
-"""Compare four configurations on the same questions.
+"""Compare three configurations on the same questions.
 
     python -m evals.run_evals --limit 2
 
-crew               full workflow: facts track with the Fact-Checker + community opinions track
-crew_no_factcheck  Fact-Checker switched off (ablation)
+crew               full workflow: facts track + community opinions track
 crew_no_community  facts only (ablation: what the opinions track adds)
 single_agent       one search + one LLM call (baseline)
 
@@ -27,7 +26,7 @@ from app.runner import run_crew
 from app.tools.verify import citation_accuracy
 from evals.baseline import run_single_agent
 
-MODES = ["crew", "crew_no_factcheck", "crew_no_community", "single_agent"]
+MODES = ["crew", "crew_no_community", "single_agent"]
 HERE = Path(__file__).parent
 
 
@@ -45,7 +44,6 @@ def domains(citations: list[dict]) -> int:
 def run_one(mode: str, item: dict, base_settings) -> dict:
     settings = replace(
         base_settings,
-        enable_factchecker=(mode != "crew_no_factcheck"),
         enable_community=(mode != "crew_no_community"),
     )
     deps = build_deps(settings)

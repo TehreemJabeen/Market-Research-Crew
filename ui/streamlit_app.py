@@ -10,6 +10,7 @@ import streamlit as st
 from app.config import get_settings
 from app.deps import build_deps
 from app.llm import BudgetExceeded, LLMError
+from app.main import parse_sites
 from app.runner import stream_crew
 
 KEYS = ("report", "final_citations", "metrics", "gaps", "table", "evidence_table", "sentiment_table",
@@ -23,24 +24,25 @@ def frame(table) -> pd.DataFrame:
 st.set_page_config(page_title="Market Research Crew", layout="wide")
 st.title("Market Research Crew")
 st.caption(
-    "Planner → web researchers (facts) + community researchers (opinions) → Fact-Checker / Opinion Processor → "
-    "Analyst → Writer → Editor"
+    "Planner → official-site finder → web researchers (facts, official sites only) + App Store lookup (apps) + community "
+    "researchers (opinions) → Opinion Processor → Analyst → Writer"
 )
 
 with st.sidebar:
     provider = st.selectbox("LLM provider", ["gemini", "grok"])
-    factcheck = st.toggle("Fact-Checker enabled", value=True, help="Turn off to see what happens without it.")
-    scout = st.toggle("Scout comparison pages first", value=True, help="Off = the planner uses model knowledge only.")
+    apps = st.selectbox("App Store data", ["auto", "on", "off"], help="auto = only when the planner sees that the products are apps.")
     community = st.toggle("Community opinions (Hacker News, Reddit)", value=True, help="Off = facts only.")
     sentiment = st.selectbox("Sentiment scorer", ["hf", "llm"], help="hf = local Hugging Face model (falls back to llm if not installed).")
     st.caption("Keys come from your .env file (GEMINI_API_KEY / XAI_API_KEY, TAVILY_API_KEY).")
 
 question = st.text_area("Research question", "Compare Notion, Coda and ClickUp for small teams", height=80)
 dims_text = st.text_input("Dimensions you insist on (optional, comma-separated)", placeholder="pricing, security")
+sites_text = st.text_input("Official sites override (optional)", placeholder="notion=notion.com, coda=coda.io",
+                           help="Only needed if the automatic lookup picked the wrong site (see Run info).")
 
 if st.button("Run research", type="primary") and question.strip():
     settings = get_settings(
-        provider=provider, enable_factchecker=factcheck, enable_scout=scout,
+        provider=provider, app_mode=apps,
         enable_community=community, sentiment_backend=sentiment,
     )
     user_dims = [d.strip() for d in dims_text.split(",") if d.strip()] or None
@@ -53,7 +55,7 @@ if st.button("Run research", type="primary") and question.strip():
     final: dict = {"claims": {}, "trace": []}
     with st.status("Crew is working…", expanded=True) as status:
         try:
-            for node, update in stream_crew(question, deps, user_dims):
+            for node, update in stream_crew(question, deps, user_dims, parse_sites(sites_text)):
                 if not update:
                     continue
                 for line in update.get("trace", []):

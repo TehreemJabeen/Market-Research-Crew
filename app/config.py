@@ -29,12 +29,11 @@ class Settings:
     scout_chars: int = 3000
 
     # Facts track
-    max_sources_per_task: int = 3
+    max_sources_per_entity: int = 2  # official pages read per entity per sub-question
     source_chars: int = 8000  # characters of each source shown to the LLM and kept for verification
-    min_verified_per_task: int = 1
-    max_loops: int = 2  # max re-research rounds
-    enable_factchecker: bool = True  # turn off for the ablation
-    fuzzy_threshold: float = 0.9  # quote-match score needed to count as "found in source"
+    fuzzy_threshold: float = 0.9  # quote-match score needed to count as "found in source" (community quotes)
+    app_mode: str = "auto"  # auto = follow the planner's is_app flag | on | off
+    app_country: str = "us"  # App Store storefront
 
     # Opinions track
     enable_community: bool = True  # turn off for the ablation (facts only)
@@ -63,6 +62,7 @@ def get_settings(**overrides) -> Settings:
         gemini_api_key=env("GEMINI_API_KEY", ""),
         xai_api_key=env("XAI_API_KEY", ""),
         tavily_api_key=env("TAVILY_API_KEY", ""),
+        app_country=env("APP_COUNTRY", "us").lower(),
         rpm=int(env("LLM_RPM", "8")),
         max_llm_calls=int(env("MAX_LLM_CALLS", "120")),
         enable_community=_flag(env("ENABLE_COMMUNITY", "1")),

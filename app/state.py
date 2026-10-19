@@ -19,6 +19,8 @@ class Plan(BaseModel):
     dimensions: list[str] = Field(default_factory=list)
     dimension_notes: dict[str, str] = Field(default_factory=dict)  # why each dimension matters
     sub_questions: list[str] = Field(default_factory=list)
+    is_app: bool = False  # the things compared are installable apps (so App Store data is relevant)
+    official_sites: dict[str, list[str]] = Field(default_factory=dict)  # entity -> official domain(s), set by agents/sites.py
     outline: list[str] = Field(default_factory=list)
 
 
@@ -26,9 +28,7 @@ class Task(BaseModel):
     id: str
     sub_question: str
     dimension: str = ""  # which dimension this sub-question serves
-    status: Literal["pending", "done", "needs_more"] = "pending"
-    attempt: int = 0  # how many research rounds have run for this task
-    feedback: str = ""  # why the previous attempt fell short (fed to the researcher)
+    status: Literal["pending", "done"] = "pending"
 
 
 class Claim(BaseModel):
@@ -41,7 +41,7 @@ class Claim(BaseModel):
     supporting_quote: str
     status: ClaimStatus = ClaimStatus.UNVERIFIED
     check_note: str = ""
-    source_type: str = "web"  # facts come from the web track; opinions never become Claims (see Theme)
+    source_type: str = "web"  # "web" | "appstore"; opinions never become Claims (see Theme)
 
 
 class Table(BaseModel):
