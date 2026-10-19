@@ -5,33 +5,34 @@ public opinion apart**. It runs on **Gemini's free tier** (or Grok), Tavily's fr
 optionally, a local Hugging Face sentiment model.
 
 > Example: *"Compare Notion, Coda and ClickUp for small teams"* → the planner discovers which dimensions matter →
-> a **facts track** (web pages, every claim checked against its source) and an **opinions track** (Hacker News and
+> a **facts track** (official websites, plus App Store data for apps) and an **opinions track** (Hacker News and
 > Reddit threads, quotes verified, sentiment scored) run in parallel → the analyst links verified facts to what
 > users say → a report with separate, cited fact and opinion voices.
 
 ## How it works
 
 ```
-                 ┌────────────── FACTS TRACK ──────────────┐
-                 │ Web researcher ×N ──► Fact-Checker ─┐   │  (capped re-research loop)
-Planner ─► fan-out                                     ├─► Gate ─► Analyst ─► Writer ─► Editor
-                 │ Community researcher ×D ─► Opinion  ┘   │
-                 └────────────── OPINIONS TRACK ───────────┘
+                          ┌────────────── FACTS TRACK ──────────────┐
+                          │ Web researcher ×N (official sites only) ─┐  │
+                          │ App Store lookup ×E (apps only) ─────────┤  │
+Planner ─► Site finder ─► fan-out                                    ├─► Gate ─► Analyst ─► Writer
+                          │ Community researcher ×D ─► Opinion ──────┘  │
+                          └────────────── OPINIONS TRACK ───────────┘
 ```
 
 There is no router: both tracks always run, because they do different jobs.
 
 | Agent | Job | AI or code? |
 |---|---|---|
-| Planner | Rewrites the question, scouts comparison pages, picks 3-6 value-adding dimensions, writes ≥1 sub-question each | LLM judges; **code** scores, selects, checks coverage |
-| Web researcher (×N) | Searches, reads pages, extracts claims with a verbatim quote and source URL | LLM + search/fetch |
-| Fact-Checker | Does the quote exist in the fetched page? Does it support the claim or contradict another? | **code**, then LLM |
+| Planner | Rewrites the question, picks 3-6 value-adding dimensions, writes ≥1 sub-question each (3 LLM calls, no searches) | LLM proposes; **code** keeps your numbers, merges forced dimensions, checks coverage |
+| Site finder | Finds each entity's official website once (`--sites notion=notion.com` overrides it) | **code** + Tavily; a model picks only when no result matches the name |
+| Web researcher (×N) | Searches only the official site(s) of the entities in its sub-question, reads the pages, extracts claims with a verbatim quote and source URL. One LLM call per task, no retries | search/fetch by **code**; LLM only reads and extracts |
+| App Store lookup (×E, one per entity; only for apps) | Reads each entity's Apple App Store listing: average rating and count, price, last update. Installs and in-app purchases are not published by Apple, so they are not reported | **code** (free iTunes Search API, no LLM, no Tavily) |
 | Community researcher (×D, one per dimension) | Collects Hacker News (Algolia API) and Reddit (via Tavily domain filter) posts, filters short, promotional, old and duplicate ones, extracts opinion snippets | code filters; LLM extracts; **code verifies each quote is in the post** |
 | Opinion processor | Scores polarity, groups snippets into themes, aggregates | hybrid, see below; **code** aggregates |
 | Gate | Waits for both tracks, then starts the analyst exactly once | **code** |
 | Analyst | Links verified facts to user themes (confirms / contradicts / qualifies), flags user concerns no fact addresses, summarises public opinion | LLM relates; **code** counts and builds tables |
-| Writer | Drafts with separate fact and opinion sections, using only numbered claims and themes | LLM |
-| Editor | Strips invalid citations, drops uncited factual and unattributed opinion sentences, renumbers, appends Sources | **code** (+ one LLM repair pass) |
+| Writer | Drafts with separate fact and opinion sections, using only numbered claims and themes; returns the report and the list of sources behind its [n] markers | LLM |
 
 ### Hybrid sentiment
 
@@ -47,31 +48,42 @@ There is no router: both tracks always run, because they do different jobs.
 
 ### Design decisions worth knowing
 
-- **Code checks the AI's work.** Quote verification is fuzzy string matching (threshold 0.9), not another opinion,
-  so a hallucinated quote cannot pass, for facts or for community quotes.
-- **Facts and opinions are different jobs.** Web claims get a truth check against their source. Opinions cannot be
+- **Code checks the AI's work, for community quotes.** Each snippet's quote must appear in its post (fuzzy match,
+  threshold 0.9). **There is currently no fact-checker or editor:** web claims reach the report as the model wrote
+  them, the report has no Sources section, and its [n] markers are not cleaned. The writer does return the list of
+  sources behind each marker, so `run_evals` can still measure how many quotes are really on their page.
+- **Facts and opinions are different jobs.** Facts come from official sites and the App Store. Opinions cannot be
   "true or false", so they get authenticity (the quote exists), filtering, thread weighting and a confidence label.
-- **Claim lifecycle** (`unverified → verified / rejected / conflicting`); the Writer only sees verified claims.
-- **A safe join.** The gate node plus `gate_route` start the analyst once, only when both tracks are ready, even
-  while the fact-check retry loop is still sending work back. A test fails if the gate is replaced by a naive join.
-- **Capped loops and budget.** Re-research runs at most `max_loops` times; `MAX_LLM_CALLS` (default 120) and a graph
-  recursion limit stop runaway runs. A `BudgetExceeded` is never swallowed by an agent.
+- **Claim status.** With no fact-checker, the researcher marks its claims "verified" with the note "not
+  fact-checked"; that label is a placeholder so the analyst and writer can use them. App Store claims are built in
+  code from Apple's response.
+- **Official sources only for facts.** Code limits every web search to the entity's official domain(s) and drops any
+  page outside them, whatever the search tool returned. Opinions come from the community track instead. A task with
+  no official page produces no claims (a gap in the report), not a fallback to blogs.
+- **No retry loop.** A task that finds nothing is not searched again; the gap is reported.
+- **A safe join.** The opinions track is one step longer than the others. The gate node plus `gate_route` start the
+  analyst once, after it finishes, and straight after the facts tracks when the community track is switched off.
+- **Budget.** `MAX_LLM_CALLS` (default 120) and a graph recursion limit stop runaway runs. A `BudgetExceeded` is
+  never swallowed by an agent.
 - **One failed researcher does not sink the run**; the error goes into the trace.
 - **Free-tier aware.** Rate limiting (`LLM_RPM`), retry with backoff on 429/5xx, call and token counting.
 
 ### The Planner (dimension discovery)
 
-A user's question rarely contains the criteria that matter, so the Planner finds them:
+A user's question rarely contains the criteria that matter, so the Planner works them out. It makes exactly three
+LLM calls and no web searches:
 
-1. **Analyze (LLM):** rewrites the question, infers audience and decision, proposes scouting searches.
-2. **Scout (code):** searches and reads real comparison / buyer's-guide pages.
-3. **Propose (LLM):** 6-10 candidate dimensions rated 1-5 on relevance, differentiation and answerability, citing
-   which scouted pages compare on each.
-4. **Select (code):** score = 0.4·relevance + 0.3·differentiation + 0.3·answerability + 0.25 per scouted page
-   (max +1). Fake URLs earn nothing. Names are deduplicated, user-forced dimensions (`--dimensions`) come first,
-   and the best 3-6 are kept.
-5. **Sub-questions (LLM) and coverage check (code):** every dimension gets at least one sub-question; a miss
-   triggers one repair call, then a template question.
+1. **Rewrite (LLM):** a clear, self-contained question, plus entities, audience and decision. The prompt says to
+   keep every number and budget and to leave the audience blank rather than guess. Code then checks that every
+   number from your question is still in the rewrite and appends any that were lost.
+2. **Dimensions (LLM):** 3-6 comparison dimensions, most important first, each with a one-line reason for this
+   audience. Code merges in your forced dimensions (`--dimensions pricing,security`, placed first), drops
+   overlapping names and trims to the limit.
+3. **Sub-questions (LLM):** 1-2 per dimension. Code checks that every dimension is covered; a dimension left empty
+   gets a template question (no extra call).
+
+The dimensions come from the model's own knowledge. `agents/scout.py` (search and read comparison pages first) is
+kept in the repo but is not called at the moment.
 
 ## Setup
 
@@ -94,6 +106,8 @@ Hacker News needs no key. Model names change; if one is rejected, set `GEMINI_MO
 ```bash
 python -m app.main "Compare Notion, Coda and ClickUp for small teams"     # writes outputs/<slug>.md
 python -m app.main "..." --dimensions pricing,security                     # force dimensions
+python -m app.main "..." --sites notion=notion.com,coda=coda.io           # fix a wrong official domain
+python -m app.main "..." --apps                                            # always add App Store data (default: auto)
 python -m app.main "..." --no-community                                    # facts only
 python -m app.main "..." --sentiment-backend llm                           # no local model
 streamlit run ui/streamlit_app.py                                          # live UI
@@ -101,8 +115,8 @@ docker build -t market-research-crew .                                     # add
 docker run --env-file .env -p 8501:8501 market-research-crew
 ```
 
-Other flags: `--provider gemini|grok`, `--no-factcheck` (ablation), `--no-scout`, `--out DIR`. Exit code 3 means the
-LLM-call budget was hit. Expect roughly 45-70 LLM calls per full run; at 8 requests/minute that is several minutes.
+Other flags: `--provider gemini|grok`, `--no-apps`, `--out DIR`. `APP_COUNTRY` (default `us`) sets the App Store storefront. Exit code 3 means the
+LLM-call budget was hit. Expect roughly 40-65 LLM calls per full run; at 8 requests/minute that is several minutes. Tavily credits: about 1 per entity for the site lookup plus 1 per entity named in each sub-question (roughly 15-25 per run with 3 entities).
 
 ## Tests (no API keys needed)
 
@@ -111,15 +125,15 @@ python -m pytest
 ```
 
 The tests run the whole graph with scripted fakes for the LLM, search, fetch, community sources and sentiment
-scorer. They cover rejected hallucinated quotes, the re-research loop, the gate join, the opinions pipeline end to
-end, fact-to-evidence links, a facts-only run, citation stripping, the planner's scoring and coverage repair,
+scorer. They cover official-site-only research and the site finder, the gate join, the opinions pipeline end to
+end, fact-to-evidence links, a facts-only run, the planner's number check, dimension tidy-up and coverage fallback,
 opinion filtering and aggregation, the hybrid scorer's fallbacks, and the call budget.
 
 ## Evals
 
 ```bash
-python -m evals.run_evals --limit 2       # crew vs crew_no_factcheck vs crew_no_community vs single_agent
-python -m evals.planner_eval --limit 3    # dimension recall/precision: scouted vs llm_only
+python -m evals.run_evals --limit 2       # crew vs crew_no_community vs single_agent
+python -m evals.planner_eval --limit 3    # dimension recall/precision against expert dimensions
 python -m evals.sentiment_eval            # HF model(s) vs LLM scorer on labelled snippets
 python -m evals.theme_review export "Compare Notion, Coda and ClickUp for small teams"   # then label the CSV
 python -m evals.theme_review score evals/theme_review.csv
@@ -127,7 +141,7 @@ python -m evals.theme_review score evals/theme_review.csv
 
 | Eval | Measures |
 |---|---|
-| `run_evals` | citation accuracy (does the quote appear in the cited page?), coverage, themes, source domains, calls, tokens, seconds; ablations for the fact-checker and the opinions track |
+| `run_evals` | citation accuracy (does the quote appear in the cited page?), coverage, themes, source domains, calls, tokens, seconds; an ablation for the opinions track |
 | `planner_eval` | recall and precision of planned dimensions against expert dimensions |
 | `sentiment_eval` | accuracy, macro-F1, plain vs comparative accuracy, seconds and LLM calls per scorer |
 | `theme_review` | your y/n judgement of theme faithfulness and of the fact-to-theme links |
@@ -143,16 +157,19 @@ about 50 real, hand-labelled snippets from your own runs.
 - Community data is a sample (Hacker News skews technical; Reddit via Tavily returns search snippets, not full
   threads). G2 and Capterra are deliberately skipped because of bot blocking and terms of service.
 - A local polarity model cannot judge comparative sentences; those are routed to the LLM, which costs calls.
+- Official sites are marketing pages: strong for pricing, features and integrations, weak for performance and
+  reliability. Check the `sites:` lines in the run info; a wrong or missing domain means no facts for that entity
+  (fix it with `--sites`).
 - Pages that need JavaScript or a login are unreadable; the search snippet is the fallback.
-- The citation check proves a quote exists in its source, and an LLM judges whether it supports the claim. It does
+- With no fact-checker, nothing proves a web claim's quote exists in its source or supports the claim. It does
   not prove the source is right.
-- The uncited and unattributed sentence checks are sentence-level heuristics.
+- App Store data covers iOS only, one storefront (`us` by default), and Apple's soft limit of about 20 calls a minute.
 - Entity and dimension labels from the LLM are mapped onto the planner's lists by simple matching.
 
 ## Resume line
 
 "Built a multi-agent market-research system (LangGraph, Gemini, Tavily, Pydantic, Hugging Face) with parallel fact
-and opinion tracks: a fact-checking agent that verifies every quote against its source, a community-opinion
-pipeline with hybrid LLM + local-model sentiment, and an analyst that links verified facts to user evidence;
-reduced unsupported citations from X% to Y% versus a single-agent baseline across N benchmark questions."
-*(fill in X, Y, N from `evals/results.md`)*
+and opinion tracks: official-site research, an App Store data agent, a community-opinion
+pipeline with hybrid LLM + local-model sentiment, and an analyst that links facts to user evidence;
+measured citation accuracy against a single-agent baseline across N benchmark questions."
+*(fill in the numbers from `evals/results.md`; the fact-checker is removed for now, so do not claim it)*
