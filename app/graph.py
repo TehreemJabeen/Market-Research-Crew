@@ -1,12 +1,14 @@
 """The LangGraph workflow.
 
-planner -+-> research_web ------> factcheck -+-> research_web (re-research loop, capped)
-         |                                    +-> gate -+
-         +-> research_community -> opinions ---------> gate -> analyst -> writer -> editor
+planner -> sites -+-> research_web -----------+
+                  +-> research_app (optional) +-> gate -> analyst -> writer
+                  +-> research_community -> opinions -+
 
-Every task gets a web (facts) researcher; every dimension gets one community (opinions) researcher.
-The gate is the join: the Analyst must run exactly once, after BOTH branches are really finished, even when
-the facts branch loops back for another research round.
+`sites` finds each entity's official website once. Every task then gets a web (facts) researcher that reads only
+those official sites; every entity gets an App Store lookup when the products are apps; every dimension gets one
+community (opinions) researcher. There is no fact-checker, no editor and no retry loop.
+The gate is the join: the Analyst runs exactly once, after the opinions track has finished (it is one step
+longer than the others), or straight after the facts tracks when the community track is switched off.
 """
 from operator import add
 from typing import Annotated, TypedDict
@@ -15,14 +17,15 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from app.agents.analyst import run_analyst
+from app.agents.appstore import AppInput, run_appstore
 from app.agents.community import run_community_researcher
-from app.agents.editor import run_editor
-from app.agents.factchecker import run_factchecker
 from app.agents.opinions import run_opinions
 from app.agents.planner import run_planner
 from app.agents.researcher import run_researcher
+from app.agents.sites import run_sites
 from app.agents.writer import run_writer
 from app.deps import Deps
+from app.tools.appstore import app_enabled
 from app.state import Claim, OpinionSummary, Plan, Snippet, Table, Task, Theme
 
 
@@ -46,13 +49,12 @@ def merge_sources(old, new):
 class GraphState(TypedDict, total=False):
     question: str
     user_dimensions: list[str]  # optional: dimensions the user insists on
+    site_overrides: dict[str, str]  # optional: entity -> official domain, set by the user
     plan: Plan
     tasks: Annotated[list[Task], merge_by_id]
     claims: Annotated[list[Claim], merge_by_id]
     snippets: Annotated[list[Snippet], merge_by_id]
     sources: Annotated[dict[str, str], merge_sources]  # url -> text actually shown to the LLM (for verification)
-    loop_count: int
-    facts_ready: bool  # set by the fact-checker: no task still needs another round
     opinions_ready: bool  # set by the opinion processor
     themes: list[Theme]
     opinion_summaries: list[OpinionSummary]
@@ -66,10 +68,8 @@ class GraphState(TypedDict, total=False):
     insights: list[str]
     public_opinion: list[str]
     gaps: list[str]
-    draft: str
     report: str
     final_citations: list[dict]
-    metrics: dict
     trace: Annotated[list[str], add]
 
 
@@ -78,13 +78,17 @@ class ResearchInput(TypedDict):
     question: str
     entities: list[str]
     dimensions: list[str]
+    official_sites: dict[str, list[str]]
 
 
 def build_graph(deps: Deps):
     def sends(state, tasks, node):
         plan = state["plan"]
         return [
-            Send(node, {"task": t, "question": state["question"], "entities": plan.entities, "dimensions": plan.dimensions})
+            Send(node, {
+                "task": t, "question": state["question"], "entities": plan.entities,
+                "dimensions": plan.dimensions, "official_sites": plan.official_sites,
+            })
             for t in tasks
         ]
 
@@ -97,39 +101,40 @@ def build_graph(deps: Deps):
                     seen.add(t.dimension)
                     first_per_dimension.append(t)
             out += sends(state, first_per_dimension, "research_community")
+        plan = state["plan"]
+        if app_enabled(deps.settings, plan.is_app):
+            out += [
+                Send("research_app", {"entity": e, "domains": plan.official_sites.get(e, []), "dimensions": plan.dimensions})
+                for e in plan.entities
+            ]
         return out
-
-    def after_factcheck(state: GraphState):
-        pending = [t for t in state["tasks"] if t.status == "needs_more"]
-        return sends(state, pending, "research_web") if pending else "gate"
 
     def gate(state: GraphState):
         return {"trace": []}  # a join point: it only decides, in gate_route, whether both branches are done
 
     def gate_route(state: GraphState):
-        facts_done = state.get("facts_ready", False)
         opinions_done = state.get("opinions_ready", False) or not deps.settings.enable_community
-        return "analyst" if facts_done and opinions_done else END
+        return "analyst" if opinions_done else END  # the facts tracks are always finished by the time this matters
 
     g = StateGraph(GraphState)
     g.add_node("planner", lambda state: run_planner(state, deps))
+    g.add_node("sites", lambda state: run_sites(state, deps))
     g.add_node("research_web", lambda payload: run_researcher(payload, deps), input_schema=ResearchInput)
     g.add_node("research_community", lambda payload: run_community_researcher(payload, deps), input_schema=ResearchInput)
-    g.add_node("factcheck", lambda state: run_factchecker(state, deps))
+    g.add_node("research_app", lambda payload: run_appstore(payload, deps), input_schema=AppInput)
     g.add_node("opinions", lambda state: run_opinions(state, deps))
     g.add_node("gate", gate)
     g.add_node("analyst", lambda state: run_analyst(state, deps))
     g.add_node("writer", lambda state: run_writer(state, deps))
-    g.add_node("editor", lambda state: run_editor(state, deps))
 
     g.add_edge(START, "planner")
-    g.add_conditional_edges("planner", fan_out, ["research_web", "research_community"])
-    g.add_edge("research_web", "factcheck")
+    g.add_edge("planner", "sites")
+    g.add_conditional_edges("sites", fan_out, ["research_web", "research_community", "research_app"])
+    g.add_edge("research_web", "gate")
+    g.add_edge("research_app", "gate")
     g.add_edge("research_community", "opinions")
-    g.add_conditional_edges("factcheck", after_factcheck, ["research_web", "gate"])
     g.add_edge("opinions", "gate")
     g.add_conditional_edges("gate", gate_route, {"analyst": "analyst", END: END})
     g.add_edge("analyst", "writer")
-    g.add_edge("writer", "editor")
-    g.add_edge("editor", END)
+    g.add_edge("writer", END)
     return g.compile()
