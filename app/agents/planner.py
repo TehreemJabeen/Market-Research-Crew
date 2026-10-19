@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from app.state import Plan, Task, normalize_label
+from app.tools.appstore import APP_DIMENSION, app_enabled
 
 REWRITE_SYSTEM = (
     "You are the Planner agent in a market-research crew. You work out what the person is really trying to decide "
@@ -29,7 +30,7 @@ REWRITE_EXAMPLE = (
     '{"rewritten_question": "Which of Notion and Coda is the better workspace and documentation tool for an '
     '8-person team with a budget under $100 per month?", "entities": ["Notion", "Coda"], '
     '"category": "team workspace tools", "audience": "an 8-person team", '
-    '"decision": "which tool to adopt within a $100 monthly budget"}'
+    '"decision": "which tool to adopt within a $100 monthly budget", "is_app": false}'
 )
 
 
@@ -39,6 +40,7 @@ class QueryRewrite(BaseModel):
     category: str = ""
     audience: str = ""
     decision: str = ""
+    is_app: bool = False
 
 
 class DimensionChoice(BaseModel):
@@ -167,7 +169,9 @@ def run_planner(state, deps) -> dict:
         "- category: what kind of thing is being compared\n"
         "- audience: who is making the decision. If the question does not state or clearly imply it, leave this "
         "empty instead of guessing.\n"
-        "- decision: what they are trying to decide or achieve (empty if unclear)\n\n" + REWRITE_EXAMPLE,
+        "- decision: what they are trying to decide or achieve (empty if unclear)\n"
+        "- is_app: true only if the things being compared are mobile or consumer apps that people install from an app "
+        "store (for example Duolingo vs Babbel); false for web software, platforms, companies or services\n\n" + REWRITE_EXAMPLE,
         QueryRewrite,
     )
     rewritten, lost = preserve_constraints(question, qa.rewritten_question.strip() or question)
@@ -219,16 +223,18 @@ def run_planner(state, deps) -> dict:
         kept.append(SubQuestion(dimension=dim, question=fallback_question(dim, entities, audience)))
     kept.sort(key=lambda sq: dims.index(sq.dimension))
 
+    use_app = app_enabled(s, qa.is_app)  # App Store facts get their own report section (not a planned dimension)
     tasks = [Task(id=f"t{i + 1}", sub_question=sq.question, dimension=sq.dimension) for i, sq in enumerate(kept)]
     plan = Plan(
         rewritten_question=rewritten,
         audience=audience,
         decision=decision,
+        is_app=qa.is_app,
         entities=entities,
         dimensions=dims,
         dimension_notes={d.name: d.why for d in chosen},
         sub_questions=[t.sub_question for t in tasks],
-        outline=["Summary", *dims, "Limitations"],
+        outline=["Summary", *dims, *([APP_DIMENSION] if use_app else []), "Limitations"],
     )
     trace.append(f"planner: {len(tasks)} sub-questions across {len(dims)} dimensions; entities={entities}")
     return {"plan": plan, "tasks": tasks, "trace": trace}

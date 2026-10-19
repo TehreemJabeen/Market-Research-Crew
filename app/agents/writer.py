@@ -1,3 +1,5 @@
+import re
+
 from app.state import table_to_markdown
 
 WRITER_SYSTEM = (
@@ -14,6 +16,23 @@ WRITER_SYSTEM = (
 )
 
 
+REF_RE = re.compile(r"\[(\d+)\]")
+
+
+def citations_for(report: str, refs: dict, by_claim: dict, by_theme: dict) -> list[dict]:
+    """The sources behind the [n] markers the report really uses (used by the evals and the UI)."""
+    used = sorted({int(n) for n in REF_RE.findall(report)} & set(refs))
+    out = []
+    for n in used:
+        rid = refs[n]
+        if rid in by_claim:
+            c = by_claim[rid]
+            out.append({"n": n, "claim_id": c.id, "url": c.source_url, "quote": c.supporting_quote.strip()})
+        elif rid in by_theme:
+            out += [{"n": n, "claim_id": rid, "url": e.url, "quote": e.quote.strip()} for e in by_theme[rid].examples]
+    return out
+
+
 def run_writer(state, deps) -> dict:
     refs = state.get("refs", {})
     question = state["question"]
@@ -22,7 +41,7 @@ def run_writer(state, deps) -> dict:
             f"# {question}\n\nNo claims could be verified against their sources and no recurring user themes were "
             "found, so no findings are reported. Try again with a more specific question or different sources."
         )
-        return {"draft": draft, "trace": ["writer: no verified evidence; wrote a limitations-only report"]}
+        return {"report": draft, "final_citations": [], "trace": ["writer: no evidence; wrote a limitations-only report"]}
 
     by_claim = {c.id: c for c in state.get("claims", [])}
     by_theme = {t.id: t for t in state.get("themes", [])}
@@ -37,7 +56,10 @@ def run_writer(state, deps) -> dict:
     plan = state["plan"]
     insights = "\n".join(f"- {i}" for i in state.get("insights", [])) or "(none)"
     opinion_notes = "\n".join(f"- {i}" for i in state.get("public_opinion", [])) or "(none)"
-    gaps = "\n".join(f"- {g}" for g in state.get("gaps", [])) or "(none)"
+    gap_list = list(state.get("gaps", []))
+    if any(c.source_type == "appstore" for c in by_claim.values()):
+        gap_list.append("App Store data has no install counts or in-app purchase details (Apple does not publish them).")
+    gaps = "\n".join(f"- {g}" for g in gap_list) or "(none)"
     unaddressed = [by_theme[i].label + f" ({by_theme[i].entity})" for i in state.get("unaddressed", []) if i in by_theme]
 
     sections = [
@@ -66,5 +88,9 @@ def run_writer(state, deps) -> dict:
         f"PUBLIC OPINION NOTES (already cited, reuse them):\n{opinion_notes}",
         f"KNOWN GAPS (mention in Limitations, and note the community sample is small and self-selected):\n{gaps}",
     ]
-    draft = deps.llm.complete(WRITER_SYSTEM, "\n\n".join(sections))
-    return {"draft": draft, "trace": [f"writer: drafted {len(draft.split())} words"]}
+    report = deps.llm.complete(WRITER_SYSTEM, "\n\n".join(sections))
+    return {
+        "report": report,
+        "final_citations": citations_for(report, refs, by_claim, by_theme),
+        "trace": [f"writer: drafted {len(report.split())} words"],
+    }

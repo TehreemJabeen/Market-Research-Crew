@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.llm import BudgetExceeded
 from app.state import ClaimStatus, Link, Table, build_refs
+from app.tools.appstore import APP_DIMENSION
 
 ANALYST_SYSTEM = (
     "You are the Analyst agent. You compare entities using ONLY the numbered verified facts (CLAIM) and the numbered "
@@ -133,6 +134,8 @@ def run_analyst(state, deps) -> dict:
     dimensions = list(plan.dimensions) or ["findings"]
     if any(c.entity == "other" for c in claims):
         entities.append("other")
+    if any(c.dimension == APP_DIMENSION for c in claims):
+        dimensions.append(APP_DIMENSION)  # App Store facts, not a planned dimension
     if any(c.dimension == "other" for c in claims):
         dimensions.append("other")
     cells: dict[tuple[str, str], list[str]] = {}
@@ -171,7 +174,7 @@ def run_analyst(state, deps) -> dict:
             evidence_table = build_evidence_table(claim_refs, theme_num, by_theme, links, fact_status)
         fact_dims, theme_dims = {c.dimension for c in claims}, {t.dimension for t in themes}
         for dim in dimensions:
-            if dim in fact_dims and dim not in theme_dims:
+            if dim in fact_dims and dim not in theme_dims and dim != APP_DIMENSION:
                 gaps.append(f"No user evidence on {dim} (facts only).")
             if dim in theme_dims and dim not in fact_dims:
                 gaps.append(f"Users discuss {dim}, but no verified facts were found.")
