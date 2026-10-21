@@ -1,0 +1,561 @@
+{
+ "question": "Compare Alpha and Beta for small teams",
+ "sample": true,
+ "events": [
+  {
+   "type": "step",
+   "data": {
+    "node": "planner",
+    "trace": [
+     "planner: dimensions = pricing, features",
+     "planner: only 2 dimensions available (wanted 3)",
+     "planner: 2 sub-questions across 2 dimensions; entities=['Alpha', 'Beta']"
+    ],
+    "plan": {
+     "rewritten_question": "Compare Alpha and Beta for small teams",
+     "audience": "small teams",
+     "entities": [
+      "Alpha",
+      "Beta"
+     ],
+     "dimensions": [
+      "pricing",
+      "features"
+     ],
+     "is_app": false,
+     "n_web": 2,
+     "n_community": 2,
+     "n_app": 0
+    }
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "sites",
+    "trace": [
+     "sites: Alpha -> alpha.example (name match)",
+     "sites: Beta -> beta.example (name match)"
+    ],
+    "official_sites": {
+     "Alpha": [
+      "alpha.example"
+     ],
+     "Beta": [
+      "beta.example"
+     ]
+    }
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "research_web",
+    "trace": [
+     "researcher t1: 3 claims from 2 official pages"
+    ],
+    "n_claims": 3
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "research_community",
+    "trace": [
+     "community[pricing]: 6 posts collected, 4 kept (dropped: {'promotional': 1, 'duplicate': 1})",
+     "community[pricing]: 4 snippets (1 rejected because the quote is not in the post, 0 off-topic)"
+    ],
+    "n_snippets": 4
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "research_web",
+    "trace": [
+     "researcher t2: 3 claims from 2 official pages"
+    ],
+    "n_claims": 3
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "research_community",
+    "trace": [
+     "community[features]: 4 posts collected, 4 kept",
+     "community[features]: 4 snippets (0 rejected because the quote is not in the post, 0 off-topic)"
+    ],
+    "n_snippets": 4
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "opinions",
+    "trace": [
+     "opinions: 8 snippets scored by ['fake', 'llm']; 3 themes kept, 2 dropped as anecdotal (< 2 threads)"
+    ],
+    "n_snippets": 8
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "analyst",
+    "trace": [
+     "analyst: 6 verified facts, 3 themes, 4 links, 0 unaddressed concerns, 0 gaps"
+    ]
+   },
+   "delay": 0.7
+  },
+  {
+   "type": "step",
+   "data": {
+    "node": "writer",
+    "trace": [
+     "writer: drafted 173 words"
+    ]
+   },
+   "delay": 0.7
+  }
+ ],
+ "result": {
+  "claims": [
+   {
+    "id": "t1-c1",
+    "task_id": "t1",
+    "entity": "Alpha",
+    "dimension": "pricing",
+    "text": "Alpha costs $10 per user per month for teams.",
+    "source_url": "https://alpha.example/product",
+    "supporting_quote": "Alpha costs ten dollars per user per month for teams.",
+    "status": "verified",
+    "check_note": "not fact-checked",
+    "source_type": "web"
+   },
+   {
+    "id": "t1-c2",
+    "task_id": "t1",
+    "entity": "Beta",
+    "dimension": "pricing",
+    "text": "Beta starts at $12 per seat monthly.",
+    "source_url": "https://beta.example/product",
+    "supporting_quote": "Beta pricing starts at twelve dollars per seat monthly.",
+    "status": "verified",
+    "check_note": "not fact-checked",
+    "source_type": "web"
+   },
+   {
+    "id": "t1-c3",
+    "task_id": "t1",
+    "entity": "Alpha",
+    "dimension": "features",
+    "text": "Alpha writes documents with built-in AI.",
+    "source_url": "https://alpha.example/product",
+    "supporting_quote": "Alpha has built-in AI that writes all your documents automatically.",
+    "status": "verified",
+    "check_note": "not fact-checked",
+    "source_type": "web"
+   },
+   {
+    "id": "t2-c1",
+    "task_id": "t2",
+    "entity": "Beta",
+    "dimension": "features",
+    "text": "Beta guarantees 99% uptime.",
+    "source_url": "https://beta.example/product",
+    "supporting_quote": "Beta guarantees ninety nine percent uptime backed by a signed contract.",
+    "status": "verified",
+    "check_note": "not fact-checked",
+    "source_type": "web"
+   },
+   {
+    "id": "t2-c2",
+    "task_id": "t2",
+    "entity": "Beta",
+    "dimension": "features",
+    "text": "Beta includes kanban boards and timeline views.",
+    "source_url": "https://beta.example/product",
+    "supporting_quote": "Beta includes kanban boards and timeline views for planning.",
+    "status": "verified",
+    "check_note": "not fact-checked",
+    "source_type": "web"
+   },
+   {
+    "id": "t2-c3",
+    "task_id": "t2",
+    "entity": "Alpha",
+    "dimension": "features",
+    "text": "Alpha offers a free plan for individuals.",
+    "source_url": "https://alpha.example/product",
+    "supporting_quote": "Alpha offers a free plan for individuals.",
+    "status": "verified",
+    "check_note": "not fact-checked",
+    "source_type": "web"
+   }
+  ],
+  "plan": {
+   "rewritten_question": "Compare Alpha and Beta for small teams",
+   "audience": "small teams",
+   "decision": "which tool to adopt",
+   "entities": [
+    "Alpha",
+    "Beta"
+   ],
+   "dimensions": [
+    "pricing",
+    "features"
+   ],
+   "dimension_notes": {
+    "pricing": "Budget is tight for small teams.",
+    "features": "Teams need the core workflow covered."
+   },
+   "sub_questions": [
+    "pricing of Alpha and Beta",
+    "features of Alpha and Beta"
+   ],
+   "is_app": false,
+   "official_sites": {
+    "Alpha": [
+     "alpha.example"
+    ],
+    "Beta": [
+     "beta.example"
+    ]
+   },
+   "outline": [
+    "Summary",
+    "pricing",
+    "features",
+    "Limitations"
+   ]
+  },
+  "sentiment_table": {
+   "columns": [
+    "Entity",
+    "pricing",
+    "features",
+    "Overall"
+   ],
+   "rows": [
+    [
+     "Alpha",
+     "negative (2 threads)",
+     "neutral (1 thread)",
+     "negative (3 threads)"
+    ],
+    [
+     "Beta",
+     "positive (2 threads)",
+     "positive (3 threads)",
+     "positive (5 threads)"
+    ]
+   ]
+  },
+  "themes": [
+   {
+    "id": "th1",
+    "entity": "Alpha",
+    "dimension": "pricing",
+    "label": "too expensive for small teams",
+    "snippet_ids": [
+     "t1-s1",
+     "t1-s2"
+    ],
+    "n_snippets": 2,
+    "n_threads": 2,
+    "n_positive": 0,
+    "n_negative": 2,
+    "n_neutral": 0,
+    "stance": "negative",
+    "confidence": "low",
+    "examples": [
+     {
+      "url": "https://news.ycombinator.com/item?id=1",
+      "quote": "Alpha got way too expensive for our five person team",
+      "source": "hn"
+     },
+     {
+      "url": "https://news.ycombinator.com/item?id=2",
+      "quote": "the price per seat is too high once you add guests",
+      "source": "hn"
+     }
+    ]
+   },
+   {
+    "id": "th2",
+    "entity": "Beta",
+    "dimension": "pricing",
+    "label": "good value and a generous free tier",
+    "snippet_ids": [
+     "t1-s3",
+     "t1-s4"
+    ],
+    "n_snippets": 2,
+    "n_threads": 2,
+    "n_positive": 2,
+    "n_negative": 0,
+    "n_neutral": 0,
+    "stance": "positive",
+    "confidence": "low",
+    "examples": [
+     {
+      "url": "https://news.ycombinator.com/item?id=6",
+      "quote": "Switched from Alpha to Beta and the pricing is much better",
+      "source": "hn"
+     },
+     {
+      "url": "https://www.reddit.com/r/work/comments/3",
+      "quote": "Beta's free tier is generous and the paid plan is cheap",
+      "source": "reddit"
+     }
+    ]
+   },
+   {
+    "id": "th3",
+    "entity": "Beta",
+    "dimension": "features",
+    "label": "kanban and timeline views work well",
+    "snippet_ids": [
+     "t2-s1",
+     "t2-s2"
+    ],
+    "n_snippets": 2,
+    "n_threads": 2,
+    "n_positive": 2,
+    "n_negative": 0,
+    "n_neutral": 0,
+    "stance": "positive",
+    "confidence": "low",
+    "examples": [
+     {
+      "url": "https://news.ycombinator.com/item?id=7",
+      "quote": "Beta kanban boards and timeline views are solid",
+      "source": "hn"
+     },
+     {
+      "url": "https://news.ycombinator.com/item?id=8",
+      "quote": "The timeline view in Beta is great for planning",
+      "source": "hn"
+     }
+    ]
+   }
+  ],
+  "opinion_summaries": [
+   {
+    "entity": "Alpha",
+    "sentiment": {
+     "label": "negative",
+     "score": -0.53,
+     "n_threads": 3,
+     "confidence": "medium"
+    },
+    "n_snippets": 3,
+    "by_dimension": {
+     "pricing": {
+      "label": "negative",
+      "score": -0.8,
+      "n_threads": 2,
+      "confidence": "low"
+     },
+     "features": {
+      "label": "neutral",
+      "score": 0.0,
+      "n_threads": 1,
+      "confidence": "low"
+     }
+    },
+    "top_praise": [],
+    "top_complaints": [
+     "th1"
+    ]
+   },
+   {
+    "entity": "Beta",
+    "sentiment": {
+     "label": "positive",
+     "score": 0.5,
+     "n_threads": 5,
+     "confidence": "high"
+    },
+    "n_snippets": 5,
+    "by_dimension": {
+     "pricing": {
+      "label": "positive",
+      "score": 0.85,
+      "n_threads": 2,
+      "confidence": "low"
+     },
+     "features": {
+      "label": "positive",
+      "score": 0.27,
+      "n_threads": 3,
+      "confidence": "medium"
+     }
+    },
+    "top_praise": [
+     "th2",
+     "th3"
+    ],
+    "top_complaints": []
+   }
+  ],
+  "gaps": [],
+  "table": {
+   "columns": [
+    "Entity",
+    "pricing",
+    "features"
+   ],
+   "rows": [
+    [
+     "Alpha",
+     "Alpha costs $10 per user per month for teams. [3]",
+     "Alpha writes documents with built-in AI. [1]; Alpha offers a free plan for individuals. [2]"
+    ],
+    [
+     "Beta",
+     "Beta starts at $12 per seat monthly. [6]",
+     "Beta guarantees 99% uptime. [4]; Beta includes kanban boards and timeline views. [5]"
+    ]
+   ]
+  },
+  "evidence_table": {
+   "columns": [
+    "Entity",
+    "Fact",
+    "User evidence",
+    "Status"
+   ],
+   "rows": [
+    [
+     "Alpha",
+     "Alpha writes documents with built-in AI. [1]",
+     "none found",
+     "No user evidence"
+    ],
+    [
+     "Alpha",
+     "Alpha offers a free plan for individuals. [2]",
+     "none found",
+     "No user evidence"
+    ],
+    [
+     "Alpha",
+     "Alpha costs $10 per user per month for teams. [3]",
+     "too expensive for small teams [7] (2 threads, qualifies)",
+     "Qualified by users"
+    ],
+    [
+     "Beta",
+     "Beta guarantees 99% uptime. [4]",
+     "kanban and timeline views work well [8] (2 threads, supports)",
+     "Confirmed by users"
+    ],
+    [
+     "Beta",
+     "Beta includes kanban boards and timeline views. [5]",
+     "kanban and timeline views work well [8] (2 threads, supports)",
+     "Confirmed by users"
+    ],
+    [
+     "Beta",
+     "Beta starts at $12 per seat monthly. [6]",
+     "good value and a generous free tier [9] (2 threads, supports)",
+     "Confirmed by users"
+    ]
+   ]
+  },
+  "unaddressed": [],
+  "report": "# Report\n\n## Findings\n- Finding number 1 is described in the verified evidence for this item [1].\n- Finding number 2 is described in the verified evidence for this item [2].\n- Finding number 3 is described in the verified evidence for this item [3].\n- Finding number 4 is described in the verified evidence for this item [4].\n- Finding number 5 is described in the verified evidence for this item [5].\n- Finding number 6 is described in the verified evidence for this item [6].\n- Users report on Hacker News and Reddit that theme 7 came up across several threads [7].\n- Users report on Hacker News and Reddit that theme 8 came up across several threads [8].\n- Users report on Hacker News and Reddit that theme 9 came up across several threads [9].\n- Pricing is a real problem for this product [7].\n- Revenue grew 300% last year according to nobody at all in the sources.\n- Another claim cites a missing source right here [99].",
+  "final_citations": [
+   {
+    "n": 1,
+    "claim_id": "t1-c3",
+    "url": "https://alpha.example/product",
+    "quote": "Alpha has built-in AI that writes all your documents automatically."
+   },
+   {
+    "n": 2,
+    "claim_id": "t2-c3",
+    "url": "https://alpha.example/product",
+    "quote": "Alpha offers a free plan for individuals."
+   },
+   {
+    "n": 3,
+    "claim_id": "t1-c1",
+    "url": "https://alpha.example/product",
+    "quote": "Alpha costs ten dollars per user per month for teams."
+   },
+   {
+    "n": 4,
+    "claim_id": "t2-c1",
+    "url": "https://beta.example/product",
+    "quote": "Beta guarantees ninety nine percent uptime backed by a signed contract."
+   },
+   {
+    "n": 5,
+    "claim_id": "t2-c2",
+    "url": "https://beta.example/product",
+    "quote": "Beta includes kanban boards and timeline views for planning."
+   },
+   {
+    "n": 6,
+    "claim_id": "t1-c2",
+    "url": "https://beta.example/product",
+    "quote": "Beta pricing starts at twelve dollars per seat monthly."
+   },
+   {
+    "n": 7,
+    "claim_id": "th1",
+    "url": "https://news.ycombinator.com/item?id=1",
+    "quote": "Alpha got way too expensive for our five person team"
+   },
+   {
+    "n": 7,
+    "claim_id": "th1",
+    "url": "https://news.ycombinator.com/item?id=2",
+    "quote": "the price per seat is too high once you add guests"
+   },
+   {
+    "n": 8,
+    "claim_id": "th3",
+    "url": "https://news.ycombinator.com/item?id=7",
+    "quote": "Beta kanban boards and timeline views are solid"
+   },
+   {
+    "n": 8,
+    "claim_id": "th3",
+    "url": "https://news.ycombinator.com/item?id=8",
+    "quote": "The timeline view in Beta is great for planning"
+   },
+   {
+    "n": 9,
+    "claim_id": "th2",
+    "url": "https://news.ycombinator.com/item?id=6",
+    "quote": "Switched from Alpha to Beta and the pricing is much better"
+   },
+   {
+    "n": 9,
+    "claim_id": "th2",
+    "url": "https://www.reddit.com/r/work/comments/3",
+    "quote": "Beta's free tier is generous and the paid plan is cheap"
+   }
+  ]
+ },
+ "usage": {
+  "llm_calls": 14,
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "seconds": 0.0,
+  "tavily_calls": 0
+ }
+}
