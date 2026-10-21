@@ -5,7 +5,7 @@ __pycache__/
 outputs/
 evals/results.json
 evals/results.md
-.venv/
+venv/
 evals/planner_results.json
 evals/planner_results.md
 evals/sentiment_results.md
