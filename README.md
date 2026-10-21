@@ -118,6 +118,25 @@ docker run --env-file .env -p 8501:8501 market-research-crew
 Other flags: `--provider gemini|grok`, `--no-apps`, `--out DIR`. `APP_COUNTRY` (default `us`) sets the App Store storefront. Exit code 3 means the
 LLM-call budget was hit. Expect roughly 40-65 LLM calls per full run; at 8 requests/minute that is several minutes. Tavily credits: about 1 per entity for the site lookup plus 1 per entity named in each sub-question (roughly 15-25 per run with 3 entities).
 
+## Web app (React + FastAPI)
+
+```bash
+pip install -r requirements.txt
+cd frontend && npm install && cd ..
+# development: two terminals
+uvicorn api.main:create_app --factory --reload      # API on :8000
+cd frontend && npm run dev                          # UI on :5173, proxies /api
+# production: build once, FastAPI serves it
+cd frontend && npm run build && cd .. && uvicorn api.main:create_app --factory
+```
+
+- One run at a time; extra runs queue. History is kept in SQLite (`RUNS_DB`, default `runs.db`).
+- Progress streams over SSE (`GET /api/runs/{id}/events`, resumable with `Last-Event-ID`).
+- Endpoints: `POST /api/runs`, `GET /api/runs`, `GET /api/runs/{id}`, `POST /api/runs/{id}/cancel`, `DELETE /api/runs/{id}`, `GET /api/config`.
+- Demo mode (`DEMO_MODE=1`) replays `api/demo_run.json` with no keys. Record a real one with `python -m api.record "your question"` (`--fake` for test doubles). The bundled file is fake sample data.
+- There is no login. Do not expose it to the internet: anyone who can reach it can spend your API quota.
+- Docker: `docker build -t market-research-crew .` then `docker run --env-file .env -p 8000:8000 -v crew-data:/data market-research-crew`.
+
 ## Tests (no API keys needed)
 
 ```bash

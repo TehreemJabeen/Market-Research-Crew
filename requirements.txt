@@ -7,3 +7,5 @@ google-genai>=1.0
 openai>=1.40
 streamlit>=1.50
 pytest>=8.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
