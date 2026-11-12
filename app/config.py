@@ -8,17 +8,19 @@ from dotenv import load_dotenv
 class Settings:
     # LLM
     provider: str = "gemini"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     grok_model: str = "grok-4-fast"
+    groq_model: str = "openai/gpt-oss-20b"
     gemini_api_key: str = ""
     xai_api_key: str = ""
+    groq_api_key: str = ""
     rpm: int = 8  # free tiers are rate limited
     max_llm_calls: int = 120  # hard budget per run
 
     # Search
     tavily_api_key: str = ""
 
-    # Planner
+    # Planner agent 
     max_dimensions: int = 6
     min_dimensions: int = 3  # asked of the model; fewer is accepted with a note in the trace
     max_subquestions: int = 8  # total cap; every dimension still keeps at least one
@@ -56,11 +58,13 @@ def get_settings(**overrides) -> Settings:
     load_dotenv()
     env = os.getenv
     settings = Settings(
-        provider=env("LLM_PROVIDER", "gemini").lower(),
-        gemini_model=env("GEMINI_MODEL", "gemini-2.5-flash"),
+        provider=env("LLM_PROVIDER", "gemini").lower(),  #retrieve llm provider from environment variable, if not set, default to "gemini"
+        gemini_model=env("GEMINI_MODEL", "gemini-3.8-flash"),
         grok_model=env("GROK_MODEL", "grok-4-fast"),
+        groq_model=env("GROQ_MODEL", "openai/gpt-oss-20b"),
         gemini_api_key=env("GEMINI_API_KEY", ""),
         xai_api_key=env("XAI_API_KEY", ""),
+        groq_api_key=env("GROQ_API_KEY", ""),
         tavily_api_key=env("TAVILY_API_KEY", ""),
         app_country=env("APP_COUNTRY", "us").lower(),
         rpm=int(env("LLM_RPM", "8")),
@@ -73,3 +77,12 @@ def get_settings(**overrides) -> Settings:
         if value is not None:
             setattr(settings, key, value)
     return settings
+
+
+# LLM and models to use
+"""
+gemini : gemini-3.8-flash
+groq: openai/gpt-oss-20b
+sentiment: cardiffnlp/twitter-roberta-base-sentiment-latest
+ 
+"""
