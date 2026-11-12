@@ -29,11 +29,11 @@ st.caption(
 )
 
 with st.sidebar:
-    provider = st.selectbox("LLM provider", ["gemini", "grok"])
+    provider = st.selectbox("LLM provider", ["gemini", "groq", "grok"])
     apps = st.selectbox("App Store data", ["auto", "on", "off"], help="auto = only when the planner sees that the products are apps.")
     community = st.toggle("Community opinions (Hacker News, Reddit)", value=True, help="Off = facts only.")
     sentiment = st.selectbox("Sentiment scorer", ["hf", "llm"], help="hf = local Hugging Face model (falls back to llm if not installed).")
-    st.caption("Keys come from your .env file (GEMINI_API_KEY / XAI_API_KEY, TAVILY_API_KEY).")
+    st.caption("Keys come from your .env file (GEMINI_API_KEY / GROQ_API_KEY / XAI_API_KEY, TAVILY_API_KEY).")
 
 question = st.text_area("Research question", "Compare Notion, Coda and ClickUp for small teams", height=80)
 dims_text = st.text_input("Dimensions you insist on (optional, comma-separated)", placeholder="pricing, security")
