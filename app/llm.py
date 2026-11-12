@@ -149,15 +149,18 @@ class GeminiLLM(BaseLLM):
 
 
 class GrokLLM(BaseLLM):
-    """xAI exposes an OpenAI-compatible endpoint, so the openai SDK works."""
+    """xAI and Groq both expose OpenAI-compatible endpoints, so the openai SDK works for either."""
+
+    KEY_NAME = "XAI_API_KEY"
+    BASE_URL = "https://api.x.ai/v1"
 
     def __init__(self, api_key: str, model: str, **kwargs):
         super().__init__(**kwargs)
         if not api_key:
-            raise LLMError("XAI_API_KEY is not set")
+            raise LLMError(f"{self.KEY_NAME} is not set")
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
+        self._client = OpenAI(api_key=api_key, base_url=self.BASE_URL)
         self.model = model
 
     def _generate(self, system, prompt, json_mode):
@@ -176,10 +179,19 @@ class GrokLLM(BaseLLM):
         )
 
 
+class GroqLLM(GrokLLM):
+    """Groq (not xAI's Grok): free tier, open models such as Llama. Key: https://console.groq.com/keys"""
+
+    KEY_NAME = "GROQ_API_KEY"
+    BASE_URL = "https://api.groq.com/openai/v1"
+
+
 def make_llm(settings) -> BaseLLM:
     kwargs = {"rpm": settings.rpm, "max_calls": settings.max_llm_calls}
     if settings.provider == "gemini":
         return GeminiLLM(settings.gemini_api_key, settings.gemini_model, **kwargs)
     if settings.provider in ("grok", "xai"):
         return GrokLLM(settings.xai_api_key, settings.grok_model, **kwargs)
-    raise LLMError(f"unknown LLM_PROVIDER '{settings.provider}' (use 'gemini' or 'grok')")
+    if settings.provider == "groq":
+        return GroqLLM(settings.groq_api_key, settings.groq_model, **kwargs)
+    raise LLMError(f"unknown LLM_PROVIDER '{settings.provider}' (use 'gemini', 'groq' or 'grok')")

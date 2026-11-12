@@ -19,7 +19,7 @@ def parse_sites(text: str | None) -> dict[str, str] | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Multi-agent market research crew")
     parser.add_argument("question", help="the research question")
-    parser.add_argument("--provider", choices=["gemini", "grok"], help="override LLM_PROVIDER")
+    parser.add_argument("--provider", choices=["gemini", "groq", "grok"], help="override LLM_PROVIDER")
     parser.add_argument("--dimensions", help="comma-separated dimensions you insist on, e.g. 'pricing,security'")
     parser.add_argument("--sites", help="official domains to use instead of the automatic lookup, e.g. 'notion=notion.com,coda=coda.io'")
     parser.add_argument("--apps", action="store_true", help="always add App Store data (default: only when the planner sees apps)")
