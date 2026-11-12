@@ -4,7 +4,7 @@ export const TERMINAL: Status[] = ['done', 'failed', 'stopped', 'cancelled']
 export interface RunOptions {
   dimensions?: string[]
   sites?: Record<string, string>
-  provider?: 'gemini' | 'grok' | null
+  provider?: 'gemini' | 'groq' | 'grok' | null
   community?: boolean
   apps?: 'auto' | 'on' | 'off'
   sentiment_backend?: 'hf' | 'llm' | null
@@ -128,7 +128,7 @@ export interface ServerEvent {
 
 export interface AppConfig {
   demo: boolean
-  providers: { gemini: boolean; grok: boolean }
+  providers: { gemini: boolean; groq: boolean; grok: boolean }
   default_provider: string
   tavily: boolean
   local_sentiment_model: boolean

@@ -29,7 +29,7 @@ export default function NewRun() {
     onSuccess: ({ run_id }) => navigate(`/runs/${run_id}`),
   })
 
-  const noKeys = config && !config.demo && !config.providers.gemini && !config.providers.grok
+  const noKeys = config && !config.demo && !config.providers.gemini && !config.providers.groq && !config.providers.grok
   const submit = (e: FormEvent) => {
     e.preventDefault()
     start.mutate({
@@ -53,7 +53,7 @@ export default function NewRun() {
 
       {noKeys && (
         <p role="alert" className="mt-6 rounded-md border border-warn px-4 py-3 text-sm text-warn">
-          No model API key found. Add GEMINI_API_KEY (or XAI_API_KEY) to the .env file and restart the server.
+          No model API key found. Add GEMINI_API_KEY (or GROQ_API_KEY / XAI_API_KEY) to the .env file and restart the server.
         </p>
       )}
 
@@ -112,6 +112,9 @@ export default function NewRun() {
                 <option value="">Server default{config ? ` (${config.default_provider})` : ''}</option>
                 <option value="gemini" disabled={config ? !config.providers.gemini : false}>
                   Gemini{config && !config.providers.gemini ? ' (no key)' : ''}
+                </option>
+                <option value="groq" disabled={config ? !config.providers.groq : false}>
+                  Groq{config && !config.providers.groq ? ' (no key)' : ''}
                 </option>
                 <option value="grok" disabled={config ? !config.providers.grok : false}>
                   Grok{config && !config.providers.grok ? ' (no key)' : ''}
